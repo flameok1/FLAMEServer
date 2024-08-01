@@ -30,3 +30,7 @@
 *.exe
 *.out
 *.app
+.vs/FlameApi/FileContentIndex
+.vs
+*.pdb
+FlameApi/x64/Debug
