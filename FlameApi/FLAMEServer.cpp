@@ -5,18 +5,18 @@
 
 
 FLAMEServer::FLAMEServer()
-	:_socket(INVALID_SOCKET),_family(AF_INET), _socktype(SOCK_STREAM), _protocol(0), _port(0), _recvCB(nullptr), _useBlockSocketServer(false)
+	:_socket(INVALID_SOCKET),_family(AF_INET), _socktype(SOCK_STREAM), _protocol(0), _port(0), _recvCB(nullptr), _useBlockSocketServer(false), shutDownFlag(false)
 {
-    InitWSA();
+    initWSA();
 }
 
 FLAMEServer::~FLAMEServer()
 {
-    ReleaseWSA();
+    releaseWSA();
 }
 
 
-void FLAMEServer::InitWSA()
+void FLAMEServer::initWSA()
 {
 #ifdef _WIN32
 	// Initialize Winsock for Window
@@ -31,7 +31,7 @@ void FLAMEServer::InitWSA()
 }
 
 
-void FLAMEServer::ReleaseWSA()
+void FLAMEServer::releaseWSA()
 {
 #ifdef _WIN32
 	WSACleanup(); //會累減ref
@@ -52,7 +52,7 @@ void FLAMEServer::sockClose()
 }
 
 
-bool FLAMEServer::Start(int port)
+bool FLAMEServer::start(int port)
 {
     
     /*
@@ -87,16 +87,22 @@ bool FLAMEServer::Start(int port)
 
     if (!_useBlockSocketServer)
     {
-        SetSocketBlockingEnabled(_socket, false);
+        setSocketBlockingEnabled(_socket, false);
+
+        std::thread listenThread(&FLAMEServer::nonBlockListenThread, this);
+        listenThread.detach();
     }
-    
-    std::thread listenThread(&FLAMEServer::ListenThread , this);
-    listenThread.detach();
+    else
+    {
+        std::thread listenThread(&FLAMEServer::blockListenThread, this);
+        listenThread.detach();
+    }
+
 
     return true;
 }
 
-void FLAMEServer::ListenThread()
+void FLAMEServer::nonBlockListenThread()
 {
     int iResult;
 
@@ -120,15 +126,19 @@ void FLAMEServer::ListenThread()
         closesocket(_socket);
         return;
     }
-
     
-
     fd_set rfd, wfd;
     struct timeval timeout;
     int ret;
 
     while (true)
     {
+        if (shutDownFlag)
+        {
+            shutDownFlag = false;
+            return;
+        }
+
         FD_ZERO(&rfd);
         FD_ZERO(&wfd);
         FD_SET(_socket, &rfd);
@@ -163,7 +173,7 @@ void FLAMEServer::ListenThread()
                 closesocket(_socket);
                 return;
             }
-            SetSocketBlockingEnabled(clientSocket, false);
+            setSocketBlockingEnabled(clientSocket, false);
             _clientSockts.push_back(makeClientSession(clientSocket));
             printf("accept a connect\n");
         }
@@ -214,12 +224,90 @@ void FLAMEServer::ListenThread()
     }
 }
 
+void FLAMEServer::blockListenThread()
+{
+    int iResult;
+
+    struct sockaddr_in address;
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(_port);
+
+    // Setup the TCP listening socket
+    iResult = bind(_socket, (struct sockaddr*)&address, (int)sizeof(sockaddr_in));
+    if (iResult == SOCKET_ERROR) {
+        printf("bind failed with error: %d\n", WSAGetLastError());
+        //freeaddrinfo(result);
+        closesocket(_socket);
+        return;
+    }
+
+    iResult = listen(_socket, SOMAXCONN);
+    if (iResult == SOCKET_ERROR) {
+        printf("listen failed with error: %d\n", WSAGetLastError());
+        closesocket(_socket);
+        return;
+    }
+
+    while (true)
+    {
+        SOCKET clientSocket;
+        struct sockaddr_in client_address;
+        int len = sizeof(client_address);
+        clientSocket = accept(_socket, (struct sockaddr*)&client_address, &len);
+        if (clientSocket == INVALID_SOCKET) {
+            printf("accept failed with error: %d\n", WSAGetLastError());
+            closesocket(_socket);
+            return;
+        }
+
+        printf("accept a connect\n");
+
+        setSocketBlockingEnabled(clientSocket, false);
+
+        //create
+        std::shared_ptr<ClientSession> newSession = makeClientSession(clientSocket);
+
+        std::thread listenThread(&FLAMEServer::sessionHandleThread, this , newSession);
+        listenThread.detach();
+    }
+}
+
+void FLAMEServer::sessionHandleThread(std::shared_ptr<ClientSession> clientSession)
+{
+    while (true)
+    {
+        int totalRecv = clientSession->recvData();
+
+        //當接收到的數據小於等於0時，代表客戶端斷開連接或發生錯誤
+        if (totalRecv < 0)
+        {
+            std::cout << "Socket recv data error." << std::endl;
+        }
+
+        if (totalRecv > 0 && clientSession->getRecvBuff() != nullptr)
+        {
+            recvHandle(clientSession.get(), clientSession->getRecvBuff(), totalRecv);
+        }
+
+        clientSession->sendData();
+
+        if (clientSession->isNeedClose())
+        {
+            clientSession->closeSession();
+            break;
+        }
+
+        std::this_thread::sleep_for(std::chrono::seconds(0));
+    }
+}
+
 std::shared_ptr<ClientSession> FLAMEServer::makeClientSession(SOCKET skt)
 {
     return std::make_shared<ClientSession>(skt);
 }
 
-bool FLAMEServer::SetSocketBlockingEnabled(SOCKET fd, bool blocking)
+bool FLAMEServer::setSocketBlockingEnabled(SOCKET fd, bool blocking)
 {
     if (fd < 0) return false;
 
@@ -262,5 +350,20 @@ void FLAMEServer::recvHandle(ClientSession* pSession, char* pBuff, int recvCount
 
 void FLAMEServer::waitShutDown()
 {
+    shutDownFlag = true;
 
+    while (true)
+    {
+        if (!shutDownFlag || _useBlockSocketServer)
+            break;
+
+        std::this_thread::sleep_for(std::chrono::seconds(0));
+    }
+
+    sockClose();
+}
+
+void FLAMEServer::switchBolckMode(bool set)
+{
+    _useBlockSocketServer = set;
 }

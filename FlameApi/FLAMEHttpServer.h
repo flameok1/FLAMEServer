@@ -42,5 +42,5 @@ public:
 	/// <summary>
 	/// http¥Î±Ò°Êserver
 	/// </summary>
-	virtual bool Start(int port);
+	virtual bool start(int port) override;
 };

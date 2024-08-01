@@ -28,7 +28,7 @@ HttpRequest* HttpHandler::GetHttpRequest()
 	return &httpReq;
 }
 
-std::string& HttpHandler::makeSendStr()
+std::string& HttpHandler::makeResponse()
 {
 	int len = (int)_sendStr.length();
 

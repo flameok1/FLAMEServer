@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #endif
 
+#include <atomic>
 #include <vector>
 #include <functional>
 #include <memory>
@@ -37,12 +38,12 @@ private:
 	/// <summary>
 	/// window socket 需要初始化wsa
 	/// </summary>
-	void InitWSA();
+	void initWSA();
 
 	/// <summary>
 	/// window socket 需要釋放 wsa
 	/// </summary>
-	void ReleaseWSA();
+	void releaseWSA();
 
 	/// <summary>
 	/// 關閉socket
@@ -52,12 +53,27 @@ private:
 	/// <summary>
 	/// 設定server socket non block
 	/// </summary>
-	bool SetSocketBlockingEnabled(SOCKET fd, bool blocking);
+	bool setSocketBlockingEnabled(SOCKET fd, bool blocking);
 
 	/// <summary>
-	/// 偵聽用Thread
+	/// 偵聽用 nonBlock thread
 	/// </summary>
-	void ListenThread();
+	void nonBlockListenThread();
+
+	/// <summary>
+	/// 偵聽用 block thread
+	/// </summary>
+	void blockListenThread();
+
+	/// <summary>
+	/// 停止thread用 flag
+	/// </summary>
+	std::atomic<bool> shutDownFlag;
+
+	/// <summary>
+	/// 處理 session update thread ，可以send較大資料不影響 主listen thread
+	/// </summary>
+	void sessionHandleThread(std::shared_ptr<ClientSession> clientSession);
 
 	/// <summary>
 	/// socket和參數
@@ -101,7 +117,7 @@ public:
 	/// <summary>
 	/// 啟動 server
 	/// </summary>
-	virtual bool Start(int port);
+	virtual bool start(int port);
 
 	//設定接收CB
 	void setRecvCB(recvCallBack);
@@ -125,4 +141,9 @@ public:
 	/// 設定socket protocal
 	/// </summary>
 	void setProtocol(int protocol);
+
+	/// <summary>
+	/// 更改block設定
+	/// </summary>
+	void switchBolckMode(bool);
 };

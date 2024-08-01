@@ -33,10 +33,10 @@ void FLAMEHttpServer::recvHandle(ClientSession* pSession, char* pBuff, int recvC
 	}
 	else
 	{
-		printf("%s\n", pBuff);
+		printf("unhandle http request ******\n%s\n*****\n", pBuff);
 	}
 
-	pSession->addBuff(handle.makeSendStr().c_str());
+	pSession->addBuff(handle.makeResponse().c_str());
 }
 
 std::shared_ptr<ClientSession> FLAMEHttpServer::makeClientSession(SOCKET skt)
@@ -44,7 +44,7 @@ std::shared_ptr<ClientSession> FLAMEHttpServer::makeClientSession(SOCKET skt)
 	return std::make_shared<HttpClientSession>(skt);
 }
 
-bool FLAMEHttpServer::Start(int port)
+bool FLAMEHttpServer::start(int port)
 {
-	return FLAMEServer::Start(port);
+	return FLAMEServer::start(port);
 }

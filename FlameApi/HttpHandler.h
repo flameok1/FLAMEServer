@@ -34,7 +34,7 @@ public:
 	HttpRequest* GetHttpRequest();
 
 	/// <summary>
-	/// ¨ú±osend str
+	/// make http response send str
 	/// </summary>
-	std::string& makeSendStr();
+	std::string& makeResponse();
 };
